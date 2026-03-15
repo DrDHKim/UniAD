@@ -31,7 +31,10 @@ from nuscenes.utils.geometry_utils import view_points
 from functools import partial
 
 # Recommended style to use as the plots will show grids.
-plt.style.use('seaborn-whitegrid')
+try:
+    plt.style.use('seaborn-v0_8-whitegrid')
+except OSError:
+    pass
 
 # Define a map geometry type for polygons and lines.
 Geometry = Union[Polygon, LineString]
@@ -2094,8 +2097,10 @@ class NuScenesMapExplorer:
         def int_coords(x):
             # function to round and convert to int
             return np.array(x).round().astype(np.int32)
-        exteriors = [int_coords(poly.exterior.coords) for poly in polygons]
-        interiors = [int_coords(pi.coords) for poly in polygons for pi in poly.interiors]
+        # Shapely 2.x: MultiPolygon은 .geoms로 순회해야 함
+        polys = list(polygons.geoms) if hasattr(polygons, 'geoms') else list(polygons)
+        exteriors = [int_coords(poly.exterior.coords) for poly in polys]
+        interiors = [int_coords(pi.coords) for poly in polys for pi in poly.interiors]
         cv2.fillPoly(mask, exteriors, 1)
         cv2.fillPoly(mask, interiors, 0)
         return mask
@@ -2109,7 +2114,8 @@ class NuScenesMapExplorer:
         :return: Numpy ndarray line mask.
         """
         if lines.geom_type == 'MultiLineString':
-            for line in lines:
+            # Shapely 2.x: MultiLineString은 .geoms로 순회
+            for line in lines.geoms:
                 coords = np.asarray(list(line.coords), np.int32)
                 coords = coords.reshape((-1, 2))
                 cv2.polylines(mask, [coords], False, 1, 2)
