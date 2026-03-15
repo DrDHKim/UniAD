@@ -414,7 +414,17 @@ class OccHead(BaseModule):
                     gt_instance=None,
                     gt_img_is_valid=None,
                 ):
-        gt_segmentation, gt_instance, gt_img_is_valid = self.get_occ_labels(gt_segmentation, gt_instance, gt_img_is_valid)
+        # When GT is unavailable (e.g., CARLA eval), use zero-filled dummies
+        if gt_segmentation is None:
+            bev_h, bev_w = self.bev_size  # (H, W) spatial dims; bev_feat is (H*W, B, D)
+            t = 1 + self.n_future
+            device = bev_feat.device
+            # unsqueeze(2) applied by get_occ_labels, so pre-add channel dim here
+            gt_segmentation = torch.zeros(1, t, 1, bev_h, bev_w, dtype=torch.long, device=device)
+            gt_instance     = torch.zeros(1, t, bev_h, bev_w, dtype=torch.long, device=device)
+            gt_img_is_valid  = torch.ones(1, self.receptive_field + self.n_future, dtype=torch.uint8, device=device)
+        else:
+            gt_segmentation, gt_instance, gt_img_is_valid = self.get_occ_labels(gt_segmentation, gt_instance, gt_img_is_valid)
 
         out_dict = dict()
         out_dict['seg_gt']  = gt_segmentation[:, :1+self.n_future]  # [1, 5, 1, 200, 200]
