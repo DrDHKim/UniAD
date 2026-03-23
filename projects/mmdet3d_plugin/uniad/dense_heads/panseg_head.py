@@ -1021,8 +1021,19 @@ class PansegformerHead(SegDETRHead):
                                            rescale=rescale)
 
         with torch.no_grad():
-            # Skip IoU computation when ground-truth is unavailable (e.g., CARLA eval)
-            if gt_lane_masks is None or gt_lane_labels is None:
+            # Skip IoU computation when ground-truth is unavailable (e.g., CARLA eval).
+            # gt_lane_masks가 None이거나 빈 텐서인 경우 모두 스킵:
+            # CarlaE2EDataset은 HD 맵 없이 torch.zeros((0,H,W))를 반환하고,
+            # collate 후 [1, 0, H, W]로 배치되므로 numel()==0으로 판단한다.
+            def _is_empty(x):
+                if x is None:
+                    return True
+                if hasattr(x, 'numel'):          # 텐서
+                    return x.numel() == 0
+                if isinstance(x, (list, tuple)):  # 리스트/튜플
+                    return len(x) == 0 or (len(x) > 0 and _is_empty(x[0]))
+                return False
+            if _is_empty(gt_lane_masks) or _is_empty(gt_lane_labels):
                 ret_iou = {}
             else:
               drivable_pred = results[0]['drivable']
