@@ -267,7 +267,7 @@ class CarlaE2EDataset(NuScenesE2EDataset):
             gt_sdc_fut_traj_mask=gt_sdc_fut_traj_mask,
             sdc_planning=sdc_planning,
             sdc_planning_mask=sdc_planning_mask,
-            command=command,   # 0=RIGHT, 1=LEFT, 2=FORWARD
+            command=command,   # 0=RIGHT, 1=LEFT, 2=FORWARD, 3=STOP
         )
 
         # 정합성 검증 (NuScenesE2EDataset과 동일)

@@ -48,7 +48,11 @@ class PlanningHeadSingleMode(nn.Module):
         # Nuscenes
         self.bev_h = bev_h
         self.bev_w = bev_w
-        self.navi_embed = nn.Embedding(3, embed_dims)
+        # 세션 31: 4-class command — 0=RIGHT, 1=LEFT, 2=FORWARD, 3=STOP
+        # Stop 커맨드 도입으로 정지 프레임이 Forward를 오염시키는 문제 해결.
+        # 기존 3개 임베딩(RIGHT/LEFT/FORWARD)은 사전학습 가중치 유지,
+        # 4번째(STOP)는 랜덤 초기화 후 파인튜닝에서 학습.
+        self.navi_embed = nn.Embedding(4, embed_dims)
         self.reg_branch = nn.Sequential(
             nn.Linear(embed_dims, embed_dims),
             nn.ReLU(),

@@ -23,8 +23,10 @@ dataset_type = 'CarlaE2EDataset'
 data_root    = 'data/Custom_dataset/'   # CARLA 이미지/LiDAR 루트
 info_root    = 'data/infos/'
 
-ann_file_train = info_root + 'carla_infos_train.pkl'
-ann_file_val   = info_root + 'carla_infos_val.pkl'
+# 세션 31: Stop 커맨드 실험용 축소 pkl (normal 절반 + slowstop 절반 + startup 전량)
+# 원본 복원 시: 'carla_infos_train.pkl' / 'carla_infos_val.pkl'
+ann_file_train = info_root + 'carla_infos_train_half.pkl'
+ann_file_val   = info_root + 'carla_infos_val_half.pkl'
 
 # -------------------------------------------------------------------
 # 로컬 SSD 캐시 설정 (NFS blocking 방지)
@@ -169,7 +171,8 @@ lr_config = dict(
     min_lr_ratio=1e-3,
 )
 
-total_epochs = 2
+# 세션 31: Stop 커맨드 빠른 검증을 위해 1 epoch만 실행
+total_epochs = 1
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 
 # -------------------------------------------------------------------
@@ -180,7 +183,7 @@ runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 #   python models/uniad/tools/train.py \
 #       models/uniad/projects/configs/stage2_e2e/carla_e2e_finetune.py \
 #       --load-from <checkpoint_path>
-load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/projects/work_dirs/stage2_e2e/carla_e2e_finetune/epoch_1_20260324_bugD_fixed.pth'
+load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/projects/work_dirs/stage2_e2e/carla_e2e_finetune/epoch_1.pth'
 
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 log_config = dict(

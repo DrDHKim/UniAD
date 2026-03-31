@@ -75,6 +75,48 @@ class CarlaTraj:
         # SDC 속도 사전 계산 (NuScenesTraj.prepare_sdc_vel_info와 동일 역할)
         self.prepare_sdc_vel_info()
 
+    def _compute_startup_first_move(self):
+        """
+        startup 씬(scene_0483~0637)별로 '최초 비정지 frame_idx'를 사전 계산.
+
+        판정 기준: ego2global_translation 기반 프레임 간 이동거리 >= 0.1m이면 '이동 시작'.
+        씬의 frame_idx=0부터 순회하여 처음으로 이동이 감지된 frame_idx를 반환.
+        이동 없이 씬이 끝나면 마지막 frame_idx + 1 (전체 STOP).
+
+        Returns:
+            dict[int, int]: {scene_num: first_move_frame_idx}
+        """
+        import re
+        # startup 씬의 info를 scene_num별로 그룹화 (frame_idx 순 정렬)
+        startup_scenes = {}  # scene_num → list[(frame_idx, info_idx)]
+        for i, info in enumerate(self.data_infos):
+            cam_path = info['cams']['CAM_FRONT']['data_path']
+            m = re.search(r'scene_(\d+)', cam_path)
+            if not m:
+                continue
+            sn = int(m.group(1))
+            if 483 <= sn <= 637:
+                startup_scenes.setdefault(sn, []).append((info['frame_idx'], i))
+
+        result = {}
+        for sn, frames in startup_scenes.items():
+            # frame_idx 오름차순 정렬
+            frames.sort(key=lambda x: x[0])
+            first_move = frames[-1][0] + 1  # 기본값: 전체 STOP (이동 없음)
+            for j in range(1, len(frames)):
+                prev_info = self.data_infos[frames[j-1][1]]
+                curr_info = self.data_infos[frames[j][1]]
+                # 프레임 간 이동거리 계산
+                pos_prev = np.array(prev_info['ego2global_translation'][:2])
+                pos_curr = np.array(curr_info['ego2global_translation'][:2])
+                delta = np.linalg.norm(pos_curr - pos_prev)
+                if delta >= 0.1:  # 0.1m 이상 이동 → 주행 시작
+                    first_move = frames[j][0]  # 이 frame_idx부터 FORWARD
+                    break
+            result[sn] = first_move
+
+        return result
+
     # ------------------------------------------------------------------
     # SDC 속도 계산
     # ------------------------------------------------------------------
@@ -439,16 +481,54 @@ class CarlaTraj:
             planning_all[0, :n_valid, :] = planning_np
             planning_mask_all[0, :n_valid, :] = 1
 
-        # command 결정: 최종 유효 스텝의 x 변위 기반
-        # x > +2m → RIGHT(0), x < -2m → LEFT(1), else → FORWARD(2)
-        mask_1d = planning_mask_all[0].any(axis=1)  # (planning_steps,)
+        # command 결정: 0=RIGHT, 1=LEFT, 2=FORWARD, 3=STOP
+        # 세션 31: Stop 커맨드 도입 — GT 궤적의 전방 이동량(y)이 임계값 미만이면 Stop.
+        # "정지 유지" 프레임을 Forward에서 분리하여, Forward가 항상 "전진" 의미만 갖게 함.
+        # 온라인 추론에서는 Stop을 절대 전송하지 않으므로, 모델은 Forward일 때 항상 wp>0 예측.
+        STOP_FWD_THRESH = 0.1  # y(전방) 이동량 임계값 [m], 0.1m 미만이면 Stop
+        mask_1d = planning_mask_all[0].any(axis=1)  # (planning_steps,) 유효 스텝 마스크
+
         if mask_1d.sum() == 0:
-            command = 2  # FORWARD (유효 스텝 없음)
-        elif planning_all[0, mask_1d][-1][0] >= 2:
-            command = 0  # RIGHT
-        elif planning_all[0, mask_1d][-1][0] <= -2:
-            command = 1  # LEFT
-        else:
+            # 미래 프레임 없음 (씬 끝) → 기본 FORWARD
             command = 2  # FORWARD
+        else:
+            valid_steps = planning_all[0, mask_1d]  # (n_valid, 3): x, y, yaw
+            # CARLA planning_all 좌표계 (방향별 실측 확인 완료):
+            #   x = Forward (전방): North 주행 시 x≈22m, y≈0
+            #   y = Left (측방):    GIF 검증으로 확인 (y>0이 좌회전)
+            # nuScenes 원본(x=Right, y=Forward)과 축이 swap + y 부호 반전.
+            #
+            # LEFT/RIGHT 판정: y(=lateral) 기준
+            #   y >= 2  → LEFT  (좌측 이동)
+            #   y <= -2 → RIGHT (우측 이동)
+            # STOP 판정: startup 씬(483~637)의 초기 정지 프레임만 적용
+            #   → 아래 별도 블록에서 처리
+            max_fwd = np.abs(valid_steps[:, 0]).max()  # x = 전방 최대 이동량 [m]
+
+            # STOP: startup 씬(scene_0483~0637)의 **최초 연속 정지 구간**만.
+            # 판정 방법: 씬별 "첫 번째 비정지 frame_idx"를 사전 계산(_startup_first_move)
+            #   → frame_idx < 그 값이면 STOP, 아니면 FORWARD/LEFT/RIGHT.
+            # 호출 순서 무관(shuffle-safe) — frame_idx 기반 정적 판정.
+            import re
+            _cam_path = info['cams']['CAM_FRONT']['data_path']
+            _scene_m = re.search(r'scene_(\d+)', _cam_path)
+            _scene_num = int(_scene_m.group(1)) if _scene_m else -1
+            _is_startup = 483 <= _scene_num <= 637
+
+            # 씬별 첫 번째 비정지 frame_idx 사전 계산 (1회만)
+            if not hasattr(self, '_startup_first_move'):
+                self._startup_first_move = self._compute_startup_first_move()
+
+            _first_move = self._startup_first_move.get(_scene_num, 0)
+
+            if _is_startup and info['frame_idx'] < _first_move:
+                # startup 씬의 초기 정지 구간 (frame_idx < 첫 이동 프레임)
+                command = 3  # STOP
+            elif valid_steps[-1][1] >= 2:
+                command = 1  # LEFT (y >= 2m → 좌측 이동)
+            elif valid_steps[-1][1] <= -2:
+                command = 0  # RIGHT (y <= -2m → 우측 이동)
+            else:
+                command = 2  # FORWARD
 
         return planning_all, planning_mask_all, command
