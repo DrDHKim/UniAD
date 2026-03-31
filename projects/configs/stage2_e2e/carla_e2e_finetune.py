@@ -183,7 +183,9 @@ runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 #   python models/uniad/tools/train.py \
 #       models/uniad/projects/configs/stage2_e2e/carla_e2e_finetune.py \
 #       --load-from <checkpoint_path>
-load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/projects/work_dirs/stage2_e2e/carla_e2e_finetune/epoch_1.pth'
+# 세션 31: nuScenes 사전학습에서 재시작 — command 축 수정 + Stop 커맨드 도입으로
+# 기존 4회 파인튜닝 체인의 잘못된 command 매핑 누적 문제 회피
+load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/ckpts/uniad_base_e2e.pth'
 
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 log_config = dict(
