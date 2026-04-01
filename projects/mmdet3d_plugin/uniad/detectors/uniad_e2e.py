@@ -273,14 +273,18 @@ class UniAD(UniADTrack):
         # Get the delta of ego position and angle between two timestamps.
         tmp_pos = copy.deepcopy(img_metas[0][0]['can_bus'][:3])
         tmp_angle = copy.deepcopy(img_metas[0][0]['can_bus'][-1])
-        # first frame
-        if self.prev_frame_info['scene_token'] is None:
-            img_metas[0][0]['can_bus'][:3] = 0
-            img_metas[0][0]['can_bus'][-1] = 0
-        # following frames
-        else:
+        # [BUG-O 수정] bevformer.py와 동일하게 prev_bev 존재 여부로 첫 프레임 판정.
+        # 이전 코드: `if self.prev_frame_info['scene_token'] is None:` → line 267에서
+        # scene_token이 이미 업데이트되어 항상 False → 첫 프레임에서 can_bus[:3]에
+        # 절대 좌표(~[155,-134,0])가 잔존 → can_bus_mlp 극단 입력 → BEV 오염.
+        if self.prev_frame_info['prev_bev'] is not None:
+            # following frames: 이전 프레임과의 delta 계산
             img_metas[0][0]['can_bus'][:3] -= self.prev_frame_info['prev_pos']
             img_metas[0][0]['can_bus'][-1] -= self.prev_frame_info['prev_angle']
+        else:
+            # first frame (또는 씬 전환 직후): delta 없음 → 0으로 설정
+            img_metas[0][0]['can_bus'][-1] = 0
+            img_metas[0][0]['can_bus'][:3] = 0
         self.prev_frame_info['prev_pos'] = tmp_pos
         self.prev_frame_info['prev_angle'] = tmp_angle
 
