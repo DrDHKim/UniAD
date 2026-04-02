@@ -521,8 +521,12 @@ class CarlaTraj:
 
             _first_move = self._startup_first_move.get(_scene_num, 0)
 
-            if _is_startup and info['frame_idx'] < _first_move:
-                # startup 씬의 초기 정지 구간 (frame_idx < 첫 이동 프레임)
+            # velocity shortcut 대응: STOP 구간 끝 2프레임을 FWD로 전환하여
+            # cmd=FWD + speed≈0 + wp>0 학습 샘플 확보 (세션 33).
+            # 이 프레임들의 GT sdc_planning은 미래에 차가 출발하므로 자동으로 wp>0.
+            _stop_end = max(_first_move - 2, 0)  # 최소 0 (2프레임 미만인 씬 보호)
+            if _is_startup and info['frame_idx'] < _stop_end:
+                # startup 씬의 초기 정지 구간 (첫 이동 2프레임 전까지)
                 command = 3  # STOP
             elif valid_steps[-1][1] >= 2:
                 command = 1  # LEFT (y >= 2m → 좌측 이동)

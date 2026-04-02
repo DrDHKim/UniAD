@@ -178,6 +178,62 @@ class CarlaE2EDataset(NuScenesE2EDataset):
         # 'v1.0-trainval' 로 고정: NuScenesDataset.evaluate()의 eval_set_map 키 호환
         self.version = 'v1.0-trainval'
 
+        # --- velocity shortcut 대응: non-startup 연속 정지 구간 필터링 (세션 33) ---
+        # 문제: FWD+speed≈0+wp≈0 프레임이 4,626개로 압도적 → 모델이 "FWD+정지→wp=0" 학습.
+        # 해결: 비startup 씬에서 연속 5프레임+ speed<0.1 구간의 앞부분을 제거,
+        #       마지막 2프레임만 유지 (정지→출발 전환 학습용).
+        # startup 씬(483~637)은 STOP 라벨이 있으므로 필터링 대상에서 제외.
+        import re
+        SLOW_THRESH = 0.1       # speed 임계값 (m/s)
+        MIN_RUN_TO_FILTER = 5   # 이 이상 연속 정지해야 필터링 적용
+        KEEP_TAIL = 2           # 연속 정지 끝에서 유지할 프레임 수
+        n_before = len(data_infos)
+
+        # 씬별 그룹화
+        scene_groups = {}       # scene_num → [(list_idx, frame_idx, speed)]
+        for i, info in enumerate(data_infos):
+            m = re.search(r'scene_(\d+)', info['cams']['CAM_FRONT']['data_path'])
+            if not m:
+                continue
+            sn = int(m.group(1))
+            if 483 <= sn <= 637:
+                continue        # startup 씬 제외
+            scene_groups.setdefault(sn, []).append(
+                (i, info['frame_idx'], info['can_bus'][13]))
+
+        # 제거 대상 인덱스 수집
+        remove_indices = set()
+        for sn, frames in scene_groups.items():
+            frames.sort(key=lambda x: x[1])     # frame_idx 오름차순
+            # 연속 정지 run 탐색
+            run_start = None
+            for j, (list_idx, fidx, speed) in enumerate(frames):
+                if speed < SLOW_THRESH:
+                    if run_start is None:
+                        run_start = j
+                else:
+                    if run_start is not None:
+                        run_len = j - run_start
+                        if run_len >= MIN_RUN_TO_FILTER:
+                            # run_start ~ (j - KEEP_TAIL - 1) 제거
+                            for k in range(run_start, j - KEEP_TAIL):
+                                remove_indices.add(frames[k][0])
+                    run_start = None
+            # 씬 끝까지 정지 중인 경우
+            if run_start is not None:
+                run_len = len(frames) - run_start
+                if run_len >= MIN_RUN_TO_FILTER:
+                    for k in range(run_start, len(frames) - KEEP_TAIL):
+                        remove_indices.add(frames[k][0])
+
+        if remove_indices:
+            data_infos = [d for i, d in enumerate(data_infos) if i not in remove_indices]
+
+        n_after = len(data_infos)
+        if n_before != n_after:
+            print(f'[CarlaE2EDataset] slow-frame 필터링: {n_before} → {n_after} '
+                  f'(-{n_before - n_after}개, non-startup 연속 정지 구간)')
+
         return data_infos
 
     # ------------------------------------------------------------------

@@ -23,10 +23,10 @@ dataset_type = 'CarlaE2EDataset'
 data_root    = 'data/Custom_dataset/'   # CARLA 이미지/LiDAR 루트
 info_root    = 'data/infos/'
 
-# 세션 31: Stop 커맨드 실험용 축소 pkl (normal 절반 + slowstop 절반 + startup 전량)
+# 세션 34: 오버샘플 pkl (전체 910씬 + STOP→FWD 전환 프레임 3x 복제)
 # 원본 복원 시: 'carla_infos_train.pkl' / 'carla_infos_val.pkl'
-ann_file_train = info_root + 'carla_infos_train_half.pkl'
-ann_file_val   = info_root + 'carla_infos_val_half.pkl'
+ann_file_train = info_root + 'carla_infos_train_oversample.pkl'
+ann_file_val   = info_root + 'carla_infos_val.pkl'
 
 # -------------------------------------------------------------------
 # 로컬 SSD 캐시 설정 (NFS blocking 방지)
@@ -185,7 +185,11 @@ runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 #       --load-from <checkpoint_path>
 # 세션 31: nuScenes 사전학습에서 재시작 — command 축 수정 + Stop 커맨드 도입으로
 # 기존 4회 파인튜닝 체인의 잘못된 command 매핑 누적 문제 회피
-load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/ckpts/uniad_base_e2e.pth'
+# 세션 33 v4: nuScenes 사전학습 체크포인트부터 재학습
+# v3는 epoch_1(shortcut 학습 완료) 위에서 시작 → 극복 불가 → 중단
+# STOP 축소 + slow 필터링이 적용된 데이터로 nuScenes부터 처음부터 학습
+# 세션 34: v4 epoch_1에서 이어서 학습 (오버샘플 데이터로 epoch 2)
+load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/projects/work_dirs/stage2_e2e/carla_e2e_finetune/epoch_1.pth'
 
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 log_config = dict(
