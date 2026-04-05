@@ -1,20 +1,15 @@
 """
-carla_e2e_finetune.py — CARLA 데이터셋으로 UniAD Stage2 파인튜닝 config
+carla_e2e_finetune_aip.py — AIP PC 전용 CARLA 파인튜닝 config
 
-base_e2e.py에서 다음만 변경:
-  - dataset_type: NuScenesE2EDataset → CarlaE2EDataset
-  - data_root: data/Custom_dataset/   (NAS 심볼릭 링크)
-  - ann_file: carla_infos_{train,val}.pkl
-  - lr: 2e-4 → 2e-5  (파인튜닝 보폭 축소)
-  - total_epochs: 2
-  - load_from: CARLA epoch_1 체크포인트 (normal 471씬 학습 완료, BUG-D 수정본)
-  - train_pipeline: LoadMultiViewImageFromFilesInCeph에 local_cache_dir 추가
-      → 씬 단위 로컬 SSD 캐시로 NFS random I/O blocking 방지 (2026-03-25)
+carla_e2e_finetune.py와 동일하되, AIP PC 환경에 맞게 변경:
+  - _base_: base_e2e_aip.py (AIP 독립 상속 체인)
+  - load_from: AIP PC의 체크포인트 절대경로
+  - 기타 AIP 고유 경로 (데이터셋, 패키지 등)는 추후 반영
 
-모든 모델 구조 / 손실 설정은 base_e2e.py 그대로 상속.
+모든 모델 구조 / 손실 설정은 base_e2e_aip.py 그대로 상속.
 """
 
-_base_ = ['./base_e2e.py']
+_base_ = ['./base_e2e_aip.py']
 
 # -------------------------------------------------------------------
 # 데이터셋 설정
@@ -184,11 +179,9 @@ runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 #   python models/uniad/tools/train.py \
 #       models/uniad/projects/configs/stage2_e2e/carla_e2e_finetune.py \
 #       --load-from <checkpoint_path>
-# 세션 31: nuScenes 사전학습에서 재시작 — command 축 수정 + Stop 커맨드 도입으로
-# 세션 35 v6: v5 체크포인트(오버샘플 3x) → slowstop v2 + 10x 오버샘플 데이터로 이어서 학습
-# 데이터 분포 변경(전환 윈도우 46.4%)이지만 이어서 학습하면 새 분포에 적응 가능.
-# nuScenes 재시작(~3일)보다 v5 이어서(~1.5일)가 GPU 효율적.
-load_from = '/home/donghyunkim/Desktop/01_Autonomous_Driving_Practice/E2E_Autonomous_Driving_Practice/models/uniad/projects/work_dirs/stage2_e2e/carla_e2e_finetune/epoch_1_v5_oversample.pth'
+# AIP PC 체크포인트 경로 (상대경로 구조 동일, 절대경로 프리픽스만 다름)
+# TODO(AIP): AIP에서 사용할 체크포인트 확정 후 경로 업데이트
+load_from = '/home/ai01/01_repos/02_E2E_Autonomous_Driving/E2E_Autonomous_Driving_Practice/models/uniad/projects/work_dirs/stage2_e2e/carla_e2e_finetune/epoch_1_v5_oversample.pth'
 
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 log_config = dict(
